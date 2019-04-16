@@ -173,7 +173,7 @@ public class CassandraCQLClient extends DB {
 
         if ((username != null) && !username.isEmpty()) {
           cluster = Cluster.builder().withCredentials(username, password)
-              .withPort(Integer.valueOf(port)).addContactPoints(hosts).build();
+              .withPort(Integer.valueOf(port)).addContactPoints(hosts).withSSL().build();
         } else {
           cluster = Cluster.builder().withPort(Integer.valueOf(port))
               .addContactPoints(hosts).build();
