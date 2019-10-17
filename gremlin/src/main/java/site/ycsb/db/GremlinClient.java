@@ -16,15 +16,12 @@
  */
 
 /*
- * MongoDB client binding for YCSB.
- *
- * Submitted by Yen Pai on 5/11/2010.
- *
- * https://gist.github.com/000a66b8db2caf42467b#file_mongo_database.java
+ * Gremlin client binding for YCSB.
  */
 package site.ycsb.db;
 import java.io.File;
-//import java.io.IOException;
+import java.io.FileNotFoundException;
+
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -68,27 +65,9 @@ public class GremlinClient extends DB {
   private static final String SSL_PROPERTY         = "gremlin.enableSSL";
   private static final String SSL_PROPERTY_DEFAULT = "true";
 
+  /* Configuration file path */
   private static final String YAML_PROPERTY         = "gremlin.yaml";
   private static final String YAML_PROPERTY_DEFAULT = "";
-
-  /** Used to include a field in a response. */
-  private static final Integer INCLUDE = Integer.valueOf(1);
-
-  /** The options to use for inserting many documents. */
-  //private static final InsertManyOptions INSERT_UNORDERED =
-    //  new InsertManyOptions().ordered(false);
-
-  /** The options to use for inserting a single document. */
-  //private static final UpdateOptions UPDATE_WITH_UPSERT = new UpdateOptions()
-    //  .upsert(true);
-
-  /**
-   * The database name to access.
-   */
-  private static String databaseName;
-
-  /** The database name to access. */
-  //private static MongoDatabase database;
 
   /**
    * Count the number of times initialized to teardown on the last
@@ -230,6 +209,11 @@ public class GremlinClient extends DB {
         }
         gremlinClient = gremlinCluster.connect();
         logger.info("Connected to cluster: {}\nHost: {}", gremlinCluster.getPath(), gremlinClient.toString());
+      } catch (FileNotFoundException e) {
+        logger.error("Couldn't find the configuration file. ", e);
+        e.printStackTrace();
+        return;
+
       } catch (Exception e) {
         System.err
             .println("Could not initialize Gremlin connection pool: "
