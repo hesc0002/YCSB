@@ -30,13 +30,13 @@ import org.apache.tinkerpop.gremlin.driver.Client;
 import org.apache.tinkerpop.gremlin.driver.Cluster;
 import org.apache.tinkerpop.gremlin.driver.Result;
 import org.apache.tinkerpop.gremlin.driver.ResultSet;
+import org.apache.tinkerpop.gremlin.driver.ser.GraphSONMessageSerializerV2d0;
 
 import org.slf4j.helpers.MessageFormatter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import site.ycsb.*;
-
 
 /**
  * Gremlin binding for YCSB framework using the apache.tinkerpop driver <a
@@ -92,8 +92,7 @@ public class GremlinClient extends DB {
         gremlinClient.close();
         gremlinCluster.close();
       } catch (Exception e1) {
-        System.err.println("Could not close GremlinDB connection pool: "
-            + e1.toString());
+        System.err.println("Could not close GremlinDB connection pool: " + e1.toString());
         e1.printStackTrace();
         return;
       } finally {
@@ -105,7 +104,9 @@ public class GremlinClient extends DB {
 
   /**
    * Delete a record from the database.
-   * 
+   * Delete query:
+   * g.V(key).has('partition_key', key).drop()
+   *
    * @param table
    *          The name of the table
    * @param key
@@ -115,20 +116,15 @@ public class GremlinClient extends DB {
    */
   @Override
   public Status delete(String table, String key) {
+    // Build insert query
+    String deleteQuery = "";
+    StringBuilder queryBuilder = new StringBuilder(deleteQuery);
+    queryBuilder.append("g.V('" + key + "')");
+    queryBuilder.append(".has('partition_key', '" + key + "')");
+    queryBuilder.append(".drop()");
+    deleteQuery = queryBuilder.toString();
+
     try {
-      // Insert query structure:
-      // g.V(key).has('partition_key', key).drop()
-
-      // Build insert query
-      String deleteQuery = "";
-      StringBuilder queryBuilder = new StringBuilder(deleteQuery);
-      queryBuilder.append("g.V('" + key + "')");
-      queryBuilder.append(".property('partition_key', '" + key + "')");
-      queryBuilder.append(".drop()");
-      deleteQuery = queryBuilder.toString();
-
-      System.out.println("\nSubmitting Gremlin query to delete a vertex: " + deleteQuery);
-
       // Submitting remote query to the server.
       logger.info("Submitting Gremlin query to delete a vertex: {}", deleteQuery);
       ResultSet results = gremlinClient.submit(deleteQuery);
@@ -139,18 +135,17 @@ public class GremlinClient extends DB {
         return Status.NOT_FOUND;
       }
 
-      CompletableFuture<Map<String, Object>> completableFutureStatusAttributes = results.statusAttributes();
-      Map<String, Object> statusAttributes = completableFutureStatusAttributes.get();
+      Map<String, Object> statusAttributes = results.statusAttributes().get();
 
       // Status code for successful query. Usually HTTP 200.
       int status = Integer.valueOf(statusAttributes.get("x-ms-status-code").toString());
-      logger.info("Insert status: {}", status);
+      logger.debug("Insert status: {}", status);
 
       if ((status >= 500) || (status == 408)) {
-        logger.debug("Http error code: {} while deleting key: {}", status, key);
+        logger.info("Http error code: {} while deleting key: {}", status, key);
         return Status.SERVICE_UNAVAILABLE;
       } else if (status >= 400) {
-        logger.debug("Http error code: {} while deleting key: {}", status, key);
+        logger.info("Http error code: {} while deleting key: {}", status, key);
         return Status.BAD_REQUEST;
       }
       return Status.OK;
@@ -180,46 +175,51 @@ public class GremlinClient extends DB {
       }
 
       String hostString = getProperties().getProperty(HOSTS_PROPERTY);
-      if (hostString == null) {
-        throw new DBException(String.format(
-            "Required property \"%s\" missing for GremlinClient",
-            HOSTS_PROPERTY));
-      }
-
       String[] hosts = hostString.split(",");
       String port = getProperties().getProperty(PORT_PROPERTY, PORT_PROPERTY_DEFAULT);
-
       String username = getProperties().getProperty(USERNAME_PROPERTY);
       String password = getProperties().getProperty(PASSWORD_PROPERTY);
       String enableSSL = getProperties().getProperty(SSL_PROPERTY, SSL_PROPERTY_DEFAULT);
       String yamlFile = getProperties().getProperty(YAML_PROPERTY, YAML_PROPERTY_DEFAULT);
-
+      if (yamlFile == null) {
+        throw new DBException(String.format(
+            "Required property \"%s\" missing for GremlinClient",
+            YAML_PROPERTY));
+      }
       try {
         // Attempt to create the connection objects
-        if (yamlFile.isEmpty()) {
+        if (hostString != null) {
+          final Map<String, Object> m = new HashMap<>();
+          m.put("serializeResultToString", true);
+          GraphSONMessageSerializerV2d0 serializer = new GraphSONMessageSerializerV2d0();
+          serializer.configure(m, null);
           gremlinCluster = Cluster.build()
-              .addContactPoints(hosts[0])
+              .addContactPoint(hosts[0])
               .port(Integer.valueOf(port))
               .credentials(username, password)
-              // ssl settings
               .enableSsl(Boolean.valueOf(enableSSL))
+              .serializer(serializer)
               .create();
         } else {
-          gremlinCluster = Cluster.build(new File(yamlFile)).create();
+          gremlinCluster = Cluster.build(new File(yamlFile))
+              .create();
         }
         gremlinClient = gremlinCluster.connect();
+
         logger.info("Connected to cluster: {}\nHost: {}", gremlinCluster.getPath(), gremlinClient.toString());
       } catch (FileNotFoundException e) {
-        logger.error("Couldn't find the configuration file. ", e);
+        System.err.println("Couldn't find the configuration file: " + yamlFile + e.toString());
+        logger.error(
+            MessageFormatter.format("Couldn't find the configuration file: {}", yamlFile).getMessage(),
+            e);
         e.printStackTrace();
         return;
 
       } catch (Exception e) {
-        System.err
-            .println("Could not initialize Gremlin connection pool: "
-                + e.toString());
+        System.err.println("Could not initialize Gremlin connection pool: " + e.toString());
         logger.error("Could not initialize Gremlin connection pool: ", e);
         e.printStackTrace();
+        return;
       }
     }
   }
@@ -228,6 +228,9 @@ public class GremlinClient extends DB {
    * Insert a record in the database. Any field/value pairs in the specified
    * values HashMap will be written into the record with the specified record
    * key.
+   * Insert query:
+   * g.addV().property('id', key).property('partition_key', key)
+   *  .property('field0', 'value0')....property('field9', 'value9')
    * 
    * @param table
    *          The name of the table
@@ -240,41 +243,37 @@ public class GremlinClient extends DB {
    */
   @Override
   public Status insert(String table, String key, Map<String, ByteIterator> values) {
+    // Build insert query
+    String insertQuery = "";
+    StringBuilder queryBuilder = new StringBuilder(insertQuery);
+    queryBuilder.append("g.addV()");
+    queryBuilder.append(".property('id', '" + key + "')");
+    queryBuilder.append(".property('partition_key', '" + key + "')");
+
+    // Populate vertex properties using value map.
+    for (Map.Entry<String, String> entry : StringByteIterator.getStringMap(values).entrySet()) {
+      queryBuilder.append(".property('" + entry.getKey() + "','" + escapeGremlin(entry.getValue()) + "')");
+    }
+
+    insertQuery = queryBuilder.toString();
+
     try {
-      // Insert query structure:
-      // g.addV(key).property('id', key).property('partition_key', key)
-      //  .property('field0', 'value0')....property('field9', 'value9')
-
-      // Build insert query
-      String insertQuery = "g.addV()";
-      StringBuilder queryBuilder = new StringBuilder(insertQuery);
-      queryBuilder.append(".property('id', '" + key + "')");
-      queryBuilder.append(".property('partition_key', '" + key + "')");
-
-      // Populate vertex properties using value map.
-      for (Map.Entry<String, String> entry : StringByteIterator.getStringMap(values).entrySet()) {
-        queryBuilder.append(".property('" + entry.getKey() + "','" + escapeGremlin(entry.getValue()) + "')");
-      }
-      insertQuery = queryBuilder.toString();
-
-      //System.out.println("\nSubmitting this Gremlin insert statement: " + insertQuery);
-
       // Submitting remote query to the server.
-      logger.info("Submitting Gremlin insert a vertex: {}", insertQuery);
+      logger.debug("Submitting Gremlin insert a vertex: {}", insertQuery);
       ResultSet results = gremlinClient.submit(insertQuery);
+      results.all().get();
 
-      CompletableFuture<Map<String, Object>> completableFutureStatusAttributes = results.statusAttributes();
-      Map<String, Object> statusAttributes = completableFutureStatusAttributes.get();
+      Map<String, Object> statusAttributes = results.statusAttributes().get();
 
       // Status code for successful query. Usually HTTP 200.
       int status = Integer.valueOf(statusAttributes.get("x-ms-status-code").toString());
       logger.info("Insert status: {}", status);
 
       if ((status >= 500) || (status == 408)) {
-        logger.debug("Http error code: {} while inserting key: {}", status, key);
+        logger.info("Http error code: {} while inserting key: {}", status, key);
         return Status.SERVICE_UNAVAILABLE;
       } else if (status >= 400) {
-        logger.debug("Http error code: {} while inserting key: {}", status, key);
+        logger.info("Http error code: {} while inserting key: {}", status, key);
         return Status.BAD_REQUEST;
       }
       return Status.OK;
@@ -288,7 +287,11 @@ public class GremlinClient extends DB {
   /**
    * Read a record from the database. Each field/value pair from the result will
    * be stored in a HashMap.
-   * 
+   * Read query:
+   * g.V(key).has('_id', key).valueMap('field0', 'field1',… 'field9')
+   *  OR
+   * g.V(key).has('_id', key)     // If fields == null
+   *
    * @param table
    *          The name of the table
    * @param key
@@ -301,48 +304,56 @@ public class GremlinClient extends DB {
    */
   @Override
   public Status read(String table, String key, Set<String> fields,
-      Map<String, ByteIterator> result) {
-    // Read query:
-    // g.V(key).has('_id', key)
-
+                     Map<String, ByteIterator> result) {
     // Build read query
     String readQuery = "";
     StringBuilder queryBuilder = new StringBuilder(readQuery);
     queryBuilder.append("g.V('" + key + "')");
     queryBuilder.append(".has('partition_key', '" + key + "')");
 
+    if (fields != null) {
+      queryBuilder.append(".valueMap(");
+      String prefix = "";
+      for (String field : fields) {
+        queryBuilder.append(prefix);
+        prefix = ",";
+        queryBuilder.append("'" + field + "'");
+      }
+      queryBuilder.append(")");
+    }
+
     readQuery = queryBuilder.toString();
-    logger.debug("Read query: {}", readQuery);
+    logger.debug("Submitting read query: {}", readQuery);
 
     // Submitting remote query to the server.
-    //System.out.println("\nSubmitting this Gremlin read statement: " + readQuery);
     try {
       ResultSet results = gremlinClient.submit(readQuery);
-      CompletableFuture<List<Result>> completableFutureResults = results.all();
-      List<Result> resultList = completableFutureResults.get();
+      List<Result> resultList = results.all().get();
 
       if (resultList == null) {
         logger.info("NO result found for query: {}", readQuery);
         return Status.NOT_FOUND;
-      } else if (resultList.size() != 1) {
-        logger.info("{} entries found for query: {}", resultList.size(), readQuery);
-        return Status.UNEXPECTED_STATE;
       }
 
       // Populate fields and corresponding values in result.
-      Map<Object, Object> fieldsValueMap = (Map<Object, Object>) resultList.get(0).getObject();
+      Map<Object, Object> keyValueMap = (Map<Object, Object>) resultList.get(0).getObject();
 
       if (fields != null) {
         // Fetch only requested fields/values.
         for (String field : fields) {
-          result.put(field, new StringByteIterator(fieldsValueMap.get(field).toString()));
-          //System.out.println("Properties :" + field + " value: " + fieldsValueMap.get(field));
+          Object valueObject = ((ArrayList)keyValueMap.get(field)).get(0);
+          result.put(field, new StringByteIterator(valueObject.toString()));
+          logger.debug("Properties: {0} value: {1}", field, valueObject);
         }
       } else {
         // Fetch all the fields/values.
-        for (Object field : fieldsValueMap.keySet()) {
-          result.put(field.toString(), new StringByteIterator(fieldsValueMap.get(field).toString()));
-          //System.out.println("Properties :" + field + " value: " + fieldsValueMap.get(field));
+        Map<Object, Object> propertyValueMap = (Map<Object, Object>) keyValueMap.get((Object)"properties");
+        for (Map.Entry<Object, Object> fieldValue : propertyValueMap.entrySet()) {
+          Map<Object, Object> valueMap = (Map<Object, Object>)((ArrayList)fieldValue.getValue()).get(0);
+          Object fieldObject = fieldValue.getKey();
+          Object valueObject = valueMap.get((Object)"value");
+          result.put(fieldValue.getKey().toString(), new StringByteIterator(valueObject.toString()));
+          logger.debug("Properties: {0} value: {1}", fieldObject, valueObject);
         }
       }
       return Status.OK;
@@ -373,8 +384,8 @@ public class GremlinClient extends DB {
    */
   @Override
   public Status scan(String table, String startkey, int recordcount,
-      Set<String> fields, Vector<HashMap<String, ByteIterator>> result) {
-    // Yet to implement the functionality.
+                     Set<String> fields, Vector<HashMap<String, ByteIterator>> result) {
+    // Not relevant.
     return Status.OK;
   }
 
@@ -382,7 +393,9 @@ public class GremlinClient extends DB {
    * Update a record in the database. Any field/value pairs in the specified
    * values HashMap will be written into the record with the specified record
    * key, overwriting any existing values with the same field name.
-   * 
+   * Update Query:
+   * g.V(key).has('partition_key', key).property('field0', 'value0')....property('field9', 'value9')
+   *
    * @param table
    *          The name of the table
    * @param key
@@ -394,45 +407,40 @@ public class GremlinClient extends DB {
    */
   @Override
   public Status update(String table, String key,
-      Map<String, ByteIterator> values) {
+                       Map<String, ByteIterator> values) {
+    // Build update query
+    String updateQuery = "";
+    StringBuilder queryBuilder = new StringBuilder(updateQuery);
+    queryBuilder.append("g.V('" + key + "')");
+    queryBuilder.append(".has('partition_key', '" + key + "')");
+
+    // Append properties and values to be updated.
+    for (Map.Entry<String, String> entry : StringByteIterator.getStringMap(values).entrySet()) {
+      queryBuilder.append(".property('" + entry.getKey() + "','" + escapeGremlin(entry.getValue()) + "')");
+    }
+    updateQuery = queryBuilder.toString();
+
     try {
-      // Update Query:
-      // g.V(key).has('partition_key', key).property('field0', 'value0')....property('field9', 'value9')
-
-      // Build update query
-      String updateQuery = "g.V('" + key + "')";
-      StringBuilder queryBuilder = new StringBuilder(updateQuery);
-      queryBuilder.append(".has('partition_key', '" + key + "')");
-
-      // Append properties and values to be updated.
-      for (Map.Entry<String, String> entry : StringByteIterator.getStringMap(values).entrySet()) {
-        queryBuilder.append(".property('" + entry.getKey() + "','" + escapeGremlin(entry.getValue()) + "')");
-      }
-      updateQuery = queryBuilder.toString();
-
       // Submitting remote query to the server.
-      //System.out.println("\nSubmitting this Gremlin update query: " + updateQuery);
       ResultSet results = gremlinClient.submit(updateQuery);
-      CompletableFuture<List<Result>> completableFutureResults = results.all();
-      List<Result> resultList = completableFutureResults.get();
+      List<Result> resultList = results.all().get();
       if ((resultList == null) || (resultList.size() == 0)) {
         logger.info("NO entry found to be updated by query: {}", updateQuery);
         return Status.NOT_FOUND;
       }
 
-      CompletableFuture<Map<String, Object>> completableFutureStatusAttributes = results.statusAttributes();
-      Map<String, Object> statusAttributes = completableFutureStatusAttributes.get();
+      Map<String, Object> statusAttributes = results.statusAttributes().get();
 
       // Status code for successful query. Usually HTTP 200.
       int status = Integer.valueOf(statusAttributes.get("x-ms-status-code").toString());
-      logger.info("Gremlin Update a vertex query: {}", updateQuery);
-      logger.info("Update status: {}", status);
+      logger.debug("Gremlin Update a vertex query: {}", updateQuery);
+      logger.debug("Update status: {}", status);
 
       if ((status >= 500) || (status == 408)) {
-        logger.debug("Http error code: {} while updating key: {}", status, key);
+        logger.info("Http error code: {} while updating key: {}", status, key);
         return Status.SERVICE_UNAVAILABLE;
       } else if (status >= 400) {
-        logger.debug("Http error code: {} while updating key: {}", status, key);
+        logger.info("Http error code: {} while updating key: {}", status, key);
         return Status.BAD_REQUEST;
       }
       return Status.OK;

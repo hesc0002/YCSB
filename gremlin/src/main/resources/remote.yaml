@@ -1,7 +1,7 @@
-hosts: [nitijaingremlin.gremlin.cosmosdb.azure.com]
-port: 443
-username: /dbs/ycsb/colls/perf
-password: BPfHk9vlnHpowBGfZXJroGfWleU92ojy5tsiOSxQrC6nRhM4gqlomDHlkN4Qaj5zKd8h9gktKXZeUmvnbfsvaQ==
+hosts: [localhost.gremlin]
+port: 8901
+username: /dbs/db1/colls/col1
+password: $password$
 connectionPool: {
-  enableSsl: true}
+  enableSsl: false}
 serializer: { className: org.apache.tinkerpop.gremlin.driver.ser.GraphSONMessageSerializerV2d0, config: { serializeResultToString: true }}
