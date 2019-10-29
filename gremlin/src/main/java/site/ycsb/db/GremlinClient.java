@@ -45,10 +45,14 @@ import site.ycsb.*;
  * See the <code>README.md</code> for configuration information.
  * </p>
  * 
- * @author
+ * @author Nitin Jain
  * @see <a
  * href="http://tinkerpop.apache.org/javadocs/3.3.4/core/org/apache/tinkerpop/gremlin/driver/package-summary.html">
  * Gremlin driver</a>
+ */
+
+/**
+ * First contributed by Nitin Jain of the Azure Cosmos DB team.
  */
 public class GremlinClient extends DB {
 
