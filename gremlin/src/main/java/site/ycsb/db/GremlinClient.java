@@ -19,6 +19,7 @@
  * Gremlin client binding for YCSB.
  */
 package site.ycsb.db;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 
@@ -68,6 +69,20 @@ public class GremlinClient extends DB {
 
   private static final String SSL_PROPERTY         = "gremlin.enableSSL";
   private static final String SSL_PROPERTY_DEFAULT = "true";
+
+  private static final String MIN_CONNECTION_POOL_SIZE = "gremlin.minConnectionPoolSize";
+  private static final String MAX_CONNECTION_POOL_SIZE = "gremlin.maxConnectionPoolSize";
+
+  private static final String MIN_IN_PROCESS_PER_CONNECTION = "gremlin.minInProcessPerConnection";
+  private static final String MAX_IN_PROCESS_PER_CONNECTION = "gremlin.maxInProcessPerConnection";
+
+  private static final String MIN_SIMULTANEOUS_USAGE_PER_CONNECTION = "gremlin.minSimultaneousUsagePerConnection";
+  private static final String MAX_SIMULTANEOUS_USAGE_PER_CONNECTION = "gremlin.maxSimultaneousUsagePerConnection";
+  
+  private static final String WORKER_POOL_SIZE = "gremlin.workerPoolSize";
+  private static final String NIO_POOL_SIZE = "gremlin.nioPoolSize";
+  private static final String MAX_WAIT_FOR_CONNECTION = "gremlin.maxWaitForConnection";
+  private static final String RECONNECT_INTERVAL = "gremlin.reconnectInterval";
 
   /* Configuration file path */
   private static final String YAML_PROPERTY         = "gremlin.yaml";
@@ -120,7 +135,7 @@ public class GremlinClient extends DB {
    */
   @Override
   public Status delete(String table, String key) {
-    // Build insert query
+    // Build delete query
     String deleteQuery = "";
     StringBuilder queryBuilder = new StringBuilder(deleteQuery);
     queryBuilder.append("g.V('" + key + "')");
@@ -185,6 +200,17 @@ public class GremlinClient extends DB {
       String password = getProperties().getProperty(PASSWORD_PROPERTY);
       String enableSSL = getProperties().getProperty(SSL_PROPERTY, SSL_PROPERTY_DEFAULT);
       String yamlFile = getProperties().getProperty(YAML_PROPERTY, YAML_PROPERTY_DEFAULT);
+      String minConnectionPoolSize = getProperties().getProperty(MIN_CONNECTION_POOL_SIZE);
+      String maxConnectionPoolSize = getProperties().getProperty(MAX_CONNECTION_POOL_SIZE);
+      String minInProcessPerConnection = getProperties().getProperty(MIN_IN_PROCESS_PER_CONNECTION);
+      String maxInProcessPerConnection = getProperties().getProperty(MAX_IN_PROCESS_PER_CONNECTION);
+      String minSimultaneousUsagePerConnection = getProperties().getProperty(MIN_SIMULTANEOUS_USAGE_PER_CONNECTION);
+      String maxSimultaneousUsagePerConnection = getProperties().getProperty(MAX_SIMULTANEOUS_USAGE_PER_CONNECTION);
+      String workerPoolSize = getProperties().getProperty(WORKER_POOL_SIZE);
+      String nioPoolSize = getProperties().getProperty(NIO_POOL_SIZE);
+      String maxWaitForConnection = getProperties().getProperty(MAX_WAIT_FOR_CONNECTION);
+      String reconnectInterval = getProperties().getProperty(RECONNECT_INTERVAL);
+      
       if (yamlFile == null) {
         throw new DBException(String.format(
             "Required property \"%s\" missing for GremlinClient",
@@ -192,24 +218,66 @@ public class GremlinClient extends DB {
       }
       try {
         // Attempt to create the connection objects
+        Cluster.Builder clusterBuilder;
         if (hostString != null) {
           final Map<String, Object> m = new HashMap<>();
           m.put("serializeResultToString", true);
           GraphSONMessageSerializerV2d0 serializer = new GraphSONMessageSerializerV2d0();
           serializer.configure(m, null);
-          gremlinCluster = Cluster.build()
+          
+          clusterBuilder = Cluster.build()
               .addContactPoint(hosts[0])
               .port(Integer.valueOf(port))
               .credentials(username, password)
               .enableSsl(Boolean.valueOf(enableSSL))
-              .serializer(serializer)
-              .create();
-        } else {
-          gremlinCluster = Cluster.build(new File(yamlFile))
-              .create();
-        }
-        gremlinClient = gremlinCluster.connect();
+              .serializer(serializer);
+          
+          if (minConnectionPoolSize != null) {
+            clusterBuilder.minConnectionPoolSize(Integer.valueOf(minConnectionPoolSize));
+          }
 
+          if (maxConnectionPoolSize != null) {
+            clusterBuilder.maxConnectionPoolSize(Integer.valueOf(maxConnectionPoolSize));
+          }
+
+          if (minInProcessPerConnection != null) {
+            clusterBuilder.minInProcessPerConnection(Integer.valueOf(minInProcessPerConnection));
+          }
+
+          if (maxInProcessPerConnection != null) {
+            clusterBuilder.maxInProcessPerConnection(Integer.valueOf(maxInProcessPerConnection));
+          }
+
+          if (minSimultaneousUsagePerConnection != null) {
+            clusterBuilder.minSimultaneousUsagePerConnection(Integer.valueOf(minSimultaneousUsagePerConnection));
+          }
+
+          if (maxSimultaneousUsagePerConnection != null) {
+            clusterBuilder.maxSimultaneousUsagePerConnection(Integer.valueOf(maxSimultaneousUsagePerConnection));
+          }
+
+          if (workerPoolSize != null) {
+            clusterBuilder.workerPoolSize(Integer.valueOf(workerPoolSize));
+          }
+
+          if (nioPoolSize != null) {
+            clusterBuilder.nioPoolSize(Integer.valueOf(nioPoolSize));
+          }
+          
+          if (maxWaitForConnection != null) {
+            clusterBuilder.maxWaitForConnection(Integer.valueOf(maxWaitForConnection));
+          }
+
+          if (reconnectInterval != null) {
+            clusterBuilder.reconnectInterval(Integer.valueOf(reconnectInterval));
+          }
+
+        } else {
+          clusterBuilder = Cluster.build(new File(yamlFile));
+        }
+
+        gremlinCluster = clusterBuilder.create();
+        gremlinClient = gremlinCluster.connect();
         logger.info("Connected to cluster: {}\nHost: {}", gremlinCluster.getPath(), gremlinClient.toString());
       } catch (FileNotFoundException e) {
         System.err.println("Couldn't find the configuration file: " + yamlFile + e.toString());
@@ -218,7 +286,6 @@ public class GremlinClient extends DB {
             e);
         e.printStackTrace();
         return;
-
       } catch (Exception e) {
         System.err.println("Could not initialize Gremlin connection pool: " + e.toString());
         logger.error("Could not initialize Gremlin connection pool: ", e);
