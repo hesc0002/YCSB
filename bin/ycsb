@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2012 - 2015 YCSB contributors. All rights reserved.
+# Copyright (c) 2012 - 2020 YCSB contributors. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -51,10 +51,7 @@ COMMANDS = {
 }
 
 DATABASES = {
-    "accumulo"     : "site.ycsb.db.accumulo.AccumuloClient",
-    "accumulo1.6"     : "site.ycsb.db.accumulo.AccumuloClient",
-    "accumulo1.7"     : "site.ycsb.db.accumulo.AccumuloClient",
-    "accumulo1.8"     : "site.ycsb.db.accumulo.AccumuloClient",
+    "accumulo1.9"     : "site.ycsb.db.accumulo.AccumuloClient",
     "aerospike"    : "site.ycsb.db.AerospikeClient",
     "arangodb"     : "site.ycsb.db.arangodb.ArangoDBClient",
     "arangodb3"     : "site.ycsb.db.arangodb.ArangoDBClient",
@@ -79,11 +76,8 @@ DATABASES = {
     "googledatastore" : "site.ycsb.db.GoogleDatastoreClient",
     "gremlin"      : "site.ycsb.db.GremlinClient",
     "griddb"       : "site.ycsb.db.griddb.GridDBClient",
-    "hbase098"     : "site.ycsb.db.HBaseClient",
-    "hbase10"      : "site.ycsb.db.HBaseClient10",
-    "hbase12"      : "site.ycsb.db.hbase12.HBaseClient12",
-    "hbase14"      : "site.ycsb.db.hbase14.HBaseClient14",
-    "hbase20"      : "site.ycsb.db.hbase20.HBaseClient20",
+    "hbase1"      : "site.ycsb.db.hbase1.HBaseClient1",
+    "hbase2"      : "site.ycsb.db.hbase2.HBaseClient2",
     "hypertable"   : "site.ycsb.db.HypertableClient",
     "ignite"       : "site.ycsb.db.ignite.IgniteClient",
     "ignite-sql"   : "site.ycsb.db.ignite.IgniteSqlClient",
@@ -107,6 +101,7 @@ DATABASES = {
     "s3"           : "site.ycsb.db.S3Client",
     "solr"         : "site.ycsb.db.solr.SolrClient",
     "solr6"        : "site.ycsb.db.solr6.SolrClient",
+    "solr7"        : "site.ycsb.db.solr7.SolrClient",
     "tarantool"    : "site.ycsb.db.TarantoolClient",
     "tablestore"   : "site.ycsb.db.tablestore.TableStoreClient"
 }
@@ -264,18 +259,6 @@ def main():
     # Classpath set up
     binding = args.database.split("-")[0]
 
-    if binding == "accumulo":
-        warn("The 'accumulo' client has been deprecated in favor of version "
-             "specific bindings. This name still maps to the binding for "
-             "Accumulo 1.6, which is named 'accumulo-1.6'. This alias will "
-             "be removed in a future YCSB release.")
-        binding = "accumulo1.6"
-
-    if binding == "accumulo1.6":
-        warn("The 'accumulo1.6' client has been deprecated because Accumulo 1.6 "
-             "is EOM. If you are using Accumulo 1.7+ try using the 'accumulo1.7' "
-             "client instead.")
-
     if binding == "cassandra2":
         warn("The 'cassandra2-cql' client has been deprecated. It has been "
              "renamed to simply 'cassandra-cql'. This alias will be removed"
@@ -286,15 +269,10 @@ def main():
         warn("The 'couchbase' client has been deprecated. If you are using "
              "Couchbase 4.0+ try using the 'couchbase2' client instead.")
 
-    if binding == "hbase098":
-        warn("The 'hbase098' client has been deprecated because HBase 0.98 "
-             "is EOM. If you are using HBase 1.2+ try using the 'hbase12' "
-             "client instead.")
-
-    if binding == "hbase10":
-        warn("The 'hbase10' client has been deprecated because HBase 1.0 "
-             "is EOM. If you are using HBase 1.2+ try using the 'hbase12' "
-             "client instead.")
+    if binding == "hbase14":
+        warn("The 'hbase14' client has been deprecated. HBase 1.y users should "
+             "rely on the 'hbase1' client instead.")
+        binding = "hbase1"
 
     if binding == "arangodb3":
         warn("The 'arangodb3' client has been deprecated. The binding 'arangodb' "
