@@ -26,6 +26,8 @@ import com.datastax.driver.core.Metadata;
 import com.datastax.driver.core.ResultSet;
 import com.datastax.driver.core.Row;
 import com.datastax.driver.core.Session;
+import com.datastax.driver.core.exceptions.NoHostAvailableException;
+import com.datastax.driver.core.exceptions.OverloadedException;
 import com.datastax.driver.core.PreparedStatement;
 import com.datastax.driver.core.BoundStatement;
 import com.datastax.driver.core.querybuilder.Insert;
@@ -37,6 +39,7 @@ import site.ycsb.ByteIterator;
 import site.ycsb.DB;
 import site.ycsb.DBException;
 import site.ycsb.Status;
+import site.ycsb.Utils;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -339,11 +342,23 @@ public class CassandraCQLClient extends DB {
 
       return Status.OK;
 
+    } catch (OverloadedException|NoHostAvailableException e) {
+      String activityId = null;
+      int retryWaitTime = Utils.getRetryAfterMs(e.toString(), 1);
+      activityId = Utils.getActivityId(e.toString());
+      logger.error(MessageFormatter.format("NoHostAvailableException:RetryWait={},ActivityId={}",
+          retryWaitTime, activityId).getMessage());
+      try {
+        Thread.sleep(retryWaitTime);
+      } catch(InterruptedException ex) {
+        logger.error(MessageFormatter.format("InterruptedException", ex.toString()).getMessage(), ex);
+      }
+      return Status.ERROR;
+//      return read(table, key, fields, result);
     } catch (Exception e) {
       logger.error(MessageFormatter.format("Error reading key: {}", key).getMessage(), e);
       return Status.ERROR;
     }
-
   }
 
   /**
@@ -586,7 +601,22 @@ public class CassandraCQLClient extends DB {
       session.execute(boundStmt);
 
       return Status.OK;
+
+    } catch (OverloadedException|NoHostAvailableException e) {
+      String activityId = null;
+      int retryWaitTime = Utils.getRetryAfterMs(e.toString(), 1);
+      activityId = Utils.getActivityId(e.toString());
+      logger.error(MessageFormatter.format("NoHostAvailableException:RetryWait={},ActivityId={}",
+          retryWaitTime, activityId).getMessage());
+      try {
+        Thread.sleep(retryWaitTime);
+      } catch(InterruptedException ex) {
+        logger.error(MessageFormatter.format("InterruptedException", ex.toString()).getMessage(), ex);
+      }
     } catch (Exception e) {
+      logger.error(MessageFormatter.format("Error message .toString {}", e.toString()).getMessage());
+      logger.error(MessageFormatter.format("Error .getMessage {}", e.getMessage()).getMessage());
+      logger.error(MessageFormatter.format("Error .getCause.getMessage {}", e.getCause().getMessage()).getMessage());
       logger.error(MessageFormatter.format("Error inserting key: {}", key).getMessage(), e);
     }
 
