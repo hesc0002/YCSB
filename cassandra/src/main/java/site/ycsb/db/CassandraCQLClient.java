@@ -346,15 +346,17 @@ public class CassandraCQLClient extends DB {
       String activityId = null;
       int retryWaitTime = Utils.getRetryAfterMs(e.toString(), 1);
       activityId = Utils.getActivityId(e.toString());
-      logger.error(MessageFormatter.format("NoHostAvailableException:RetryWait={},ActivityId={}",
+      logger.warn(MessageFormatter.format("NoHostAvailableException:RetryWait={},ActivityId={}",
           retryWaitTime, activityId).getMessage());
+      logger.debug(MessageFormatter.format("NoHostAvailableException:RetryWait={},ActivityId={}",
+          retryWaitTime, activityId).getMessage(), e);
       try {
         Thread.sleep(retryWaitTime);
       } catch(InterruptedException ex) {
-        logger.error(MessageFormatter.format("InterruptedException", ex.toString()).getMessage(), ex);
+        logger.debug(MessageFormatter.format("InterruptedException", ex.toString()).getMessage(), ex);
       }
-      return Status.ERROR;
-//      return read(table, key, fields, result);
+      return Status.THROTTLED;
+      
     } catch (Exception e) {
       logger.error(MessageFormatter.format("Error reading key: {}", key).getMessage(), e);
       return Status.ERROR;
@@ -457,6 +459,21 @@ public class CassandraCQLClient extends DB {
 
       return Status.OK;
 
+    } catch (OverloadedException|NoHostAvailableException e) {
+      String activityId = null;
+      int retryWaitTime = Utils.getRetryAfterMs(e.toString(), 1);
+      activityId = Utils.getActivityId(e.toString());
+      logger.warn(MessageFormatter.format("NoHostAvailableException:RetryWait={},ActivityId={}",
+          retryWaitTime, activityId).getMessage());
+      logger.debug(MessageFormatter.format("NoHostAvailableException:RetryWait={},ActivityId={}",
+          retryWaitTime, activityId).getMessage(), e);
+      try {
+        Thread.sleep(retryWaitTime);
+      } catch(InterruptedException ex) {
+        logger.debug(MessageFormatter.format("InterruptedException", ex.toString()).getMessage(), ex);
+      }
+      return Status.THROTTLED;
+      
     } catch (Exception e) {
       logger.error(
           MessageFormatter.format("Error scanning with startkey: {}", startkey).getMessage(), e);
@@ -530,11 +547,27 @@ public class CassandraCQLClient extends DB {
       session.execute(boundStmt);
 
       return Status.OK;
+
+    } catch (OverloadedException|NoHostAvailableException e) {
+      String activityId = null;
+      int retryWaitTime = Utils.getRetryAfterMs(e.toString(), 1);
+      activityId = Utils.getActivityId(e.toString());
+      logger.warn(MessageFormatter.format("NoHostAvailableException:RetryWait={},ActivityId={}",
+          retryWaitTime, activityId).getMessage());
+      logger.debug(MessageFormatter.format("NoHostAvailableException:RetryWait={},ActivityId={}",
+          retryWaitTime, activityId).getMessage(), e);
+      try {
+        Thread.sleep(retryWaitTime);
+      } catch(InterruptedException ex) {
+        logger.debug(MessageFormatter.format("InterruptedException", ex.toString()).getMessage(), ex);
+      }
+      return Status.THROTTLED;
+
     } catch (Exception e) {
       logger.error(MessageFormatter.format("Error updating key: {}", key).getMessage(), e);
+      return Status.ERROR;
     }
 
-    return Status.ERROR;
   }
 
   /**
@@ -606,21 +639,22 @@ public class CassandraCQLClient extends DB {
       String activityId = null;
       int retryWaitTime = Utils.getRetryAfterMs(e.toString(), 1);
       activityId = Utils.getActivityId(e.toString());
-      logger.error(MessageFormatter.format("NoHostAvailableException:RetryWait={},ActivityId={}",
+      logger.warn(MessageFormatter.format("NoHostAvailableException:RetryWait={},ActivityId={}",
           retryWaitTime, activityId).getMessage());
+      logger.debug(MessageFormatter.format("NoHostAvailableException:RetryWait={},ActivityId={}",
+          retryWaitTime, activityId).getMessage(), e);
       try {
         Thread.sleep(retryWaitTime);
       } catch(InterruptedException ex) {
-        logger.error(MessageFormatter.format("InterruptedException", ex.toString()).getMessage(), ex);
+        logger.debug(MessageFormatter.format("InterruptedException", ex.toString()).getMessage(), ex);
       }
+      return Status.THROTTLED;
+
     } catch (Exception e) {
-      logger.error(MessageFormatter.format("Error message .toString {}", e.toString()).getMessage());
-      logger.error(MessageFormatter.format("Error .getMessage {}", e.getMessage()).getMessage());
-      logger.error(MessageFormatter.format("Error .getCause.getMessage {}", e.getCause().getMessage()).getMessage());
       logger.error(MessageFormatter.format("Error inserting key: {}", key).getMessage(), e);
+      return Status.ERROR;
     }
 
-    return Status.ERROR;
   }
 
   /**
@@ -659,6 +693,21 @@ public class CassandraCQLClient extends DB {
       session.execute(stmt.bind(key));
 
       return Status.OK;
+
+    } catch (OverloadedException|NoHostAvailableException e) {
+      String activityId = null;
+      int retryWaitTime = Utils.getRetryAfterMs(e.toString(), 1);
+      activityId = Utils.getActivityId(e.toString());
+      logger.warn(MessageFormatter.format("NoHostAvailableException:RetryWait={},ActivityId={}",
+          retryWaitTime, activityId).getMessage());
+      logger.debug(MessageFormatter.format("NoHostAvailableException:RetryWait={},ActivityId={}",
+          retryWaitTime, activityId).getMessage(), e);
+      try {
+        Thread.sleep(retryWaitTime);
+      } catch(InterruptedException ex) {
+        logger.error(MessageFormatter.format("InterruptedException", ex.toString()).getMessage(), ex);
+      }
+      return Status.THROTTLED;
     } catch (Exception e) {
       logger.error(MessageFormatter.format("Error deleting key: {}", key).getMessage(), e);
     }

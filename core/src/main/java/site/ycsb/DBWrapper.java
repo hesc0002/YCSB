@@ -24,6 +24,9 @@ import org.apache.htrace.core.Tracer;
 
 import java.util.*;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Wrapper around a "real" DB that measures latencies and counts return codes.
  * Also reports latency separately between OK and failed operations.
@@ -49,8 +52,12 @@ public class DBWrapper extends DB {
   private final String scopeStringScan;
   private final String scopeStringUpdate;
 
+  private final Logger logger;
+
   public DBWrapper(final DB db, final Tracer tracer) {
     this.db = db;
+    this.logger = LoggerFactory.getLogger(DBWrapper.class);
+
     measurements = Measurements.getMeasurements();
     this.tracer = tracer;
     final String simple = db.getClass().getSimpleName();
@@ -97,9 +104,9 @@ public class DBWrapper extends DB {
         }
       }
 
-      System.err.println("DBWrapper: report latency for each error is " +
-          this.reportLatencyForEachError + " and specific error codes to track" +
-          " for latency are: " + this.latencyTrackedErrors.toString());
+      logger.info("DBWrapper: report latency for each error is {} and specific error codes "
+          + "to track for latency are: {}", this.reportLatencyForEachError, this.latencyTrackedErrors.toString());
+
     }
   }
 
