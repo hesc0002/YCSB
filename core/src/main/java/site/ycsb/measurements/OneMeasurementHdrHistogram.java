@@ -163,6 +163,7 @@ public class OneMeasurementHdrHistogram extends OneMeasurement {
         + ", Min=" + intervalHistogram.getMinValue()
         + ", Avg=" + d.format(intervalHistogram.getMean()) 
         + ", StdDev=" + d.format(intervalHistogram.getStdDeviation())
+        + ", 50=" + d.format(intervalHistogram.getValueAtPercentile(50))
         + ", 90=" + d.format(intervalHistogram.getValueAtPercentile(90))
         + ", 99=" + d.format(intervalHistogram.getValueAtPercentile(99)) 
         + ", 99.9=" + d.format(intervalHistogram.getValueAtPercentile(99.9)) 
