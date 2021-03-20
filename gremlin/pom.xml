@@ -41,7 +41,7 @@ LICENSE file.
     <dependency>
       <groupId>org.apache.tinkerpop</groupId>
       <artifactId>gremlin-driver</artifactId>
-      <version>3.4.0</version> <!--${gremlin.version}-->
+      <version>3.4.10</version> <!--${gremlin.version}-->
     </dependency>
     <dependency>
       <groupId>site.ycsb</groupId>
