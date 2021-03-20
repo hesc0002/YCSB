@@ -81,7 +81,7 @@ public class AzureCosmosClient extends DB {
   private static final Logger LOGGER = LoggerFactory.getLogger(AzureCosmosClient.class);
 
   /**
-   * Count the number of times initialized to teardown on the last
+   * Count the number of times initialized toT teardown on the last
    * {@link #cleanup()}.
    */
   private static final AtomicInteger INIT_COUNT = new AtomicInteger(0);

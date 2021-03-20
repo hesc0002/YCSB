@@ -131,6 +131,11 @@ LICENSE file.
     </dependency>
     <dependency>
       <groupId>site.ycsb</groupId>
+      <artifactId>gremlin-binding</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>site.ycsb</groupId>
       <artifactId>griddb-binding</artifactId>
       <version>${project.version}</version>
     </dependency>

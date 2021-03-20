@@ -25,6 +25,10 @@ import site.ycsb.measurements.Measurements;
 import java.io.IOException;
 import java.util.*;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+//import org.slf4j.helpers.MessageFormatter;
+
 /**
  * The core benchmark scenario. Represents a set of clients doing simple CRUD operations. The
  * relative proportion of different kinds of operations, and other properties of the workload,
@@ -346,6 +350,21 @@ public class CoreWorkload extends Workload {
   public static final String INSERTION_RETRY_INTERVAL = "core_workload_insertion_retry_interval";
   public static final String INSERTION_RETRY_INTERVAL_DEFAULT = "3";
 
+
+  /**
+   * How many times to retry when insertion of a single item to a DB fails.
+   */
+  public static final String TRANSACTION_RETRY_LIMIT = "core_workload_transaction_retry_limit";
+  public static final String TRANSACTION_RETRY_LIMIT_DEFAULT = "0";
+
+  /**
+   * Base multiplier in milliseconds for exponential backoff of retries.
+   */
+  public static final String TRANSACTION_RETRY_INTERVAL = "core_workload_transaction_retry_interval";
+  public static final String TRANSACTION_RETRY_INTERVAL_DEFAULT = "100";
+
+ 
+
   /**
    * Field name prefix.
    */
@@ -368,6 +387,10 @@ public class CoreWorkload extends Workload {
   protected int zeropadding;
   protected int insertionRetryLimit;
   protected int insertionRetryInterval;
+  protected int transactionRetryLimit;
+  protected int transactionRetryInterval;
+
+  private static Logger logger;
 
   private Measurements measurements = Measurements.getMeasurements();
 
@@ -420,6 +443,8 @@ public class CoreWorkload extends Workload {
    */
   @Override
   public void init(Properties p) throws WorkloadException {
+
+    logger = LoggerFactory.getLogger("site.ycsb.workloads.CoreWorkload");
     table = p.getProperty(TABLENAME_PROPERTY, TABLENAME_PROPERTY_DEFAULT);
 
     fieldcount =
@@ -545,6 +570,10 @@ public class CoreWorkload extends Workload {
         INSERTION_RETRY_LIMIT, INSERTION_RETRY_LIMIT_DEFAULT));
     insertionRetryInterval = Integer.parseInt(p.getProperty(
         INSERTION_RETRY_INTERVAL, INSERTION_RETRY_INTERVAL_DEFAULT));
+    transactionRetryLimit = Integer.parseInt(p.getProperty(
+        TRANSACTION_RETRY_LIMIT, TRANSACTION_RETRY_LIMIT_DEFAULT));
+    transactionRetryInterval = Integer.parseInt(p.getProperty(
+        TRANSACTION_RETRY_INTERVAL, TRANSACTION_RETRY_INTERVAL_DEFAULT));
   }
 
   /**
@@ -626,7 +655,7 @@ public class CoreWorkload extends Workload {
       // even if one single insertion fails. User can optionally configure
       // an insertion retry limit (default is 0) to enable retry.
       if (++numOfRetries <= insertionRetryLimit) {
-        System.err.println("Retrying insertion, retry count: " + numOfRetries);
+        logger.warn("Retrying insertion, retry count: {}", numOfRetries);
         try {
           // Sleep for a random number between [0.8, 1.2)*insertionRetryInterval.
           int sleepTime = (int) (1000 * insertionRetryInterval * (0.8 + 0.4 * Math.random()));
@@ -634,12 +663,10 @@ public class CoreWorkload extends Workload {
         } catch (InterruptedException e) {
           break;
         }
-
       } else {
-        System.err.println("Error inserting, not retrying any more. number of attempts: " + numOfRetries +
-            "Insertion Retry Limit: " + insertionRetryLimit);
+        logger.error("Error inserting, not retrying any more. number of attempts: {}"
+            + " Insertion Retry Limit: {}", numOfRetries, insertionRetryLimit);
         break;
-
       }
     } while (true);
 
@@ -730,7 +757,6 @@ public class CoreWorkload extends Workload {
     if (!readallfields) {
       // read a random field
       String fieldname = fieldnames.get(fieldchooser.nextValue().intValue());
-
       fields = new HashSet<String>();
       fields.add(fieldname);
     } else if (dataintegrity || readallfieldsbyname) {
@@ -739,12 +765,38 @@ public class CoreWorkload extends Workload {
     }
 
     HashMap<String, ByteIterator> cells = new HashMap<String, ByteIterator>();
-    db.read(table, keyname, fields, cells);
+
+    Status status;
+    int numOfRetries = 0;
+    do {
+      status = db.read(table, keyname, fields, cells);
+
+      if (null != status && status != Status.THROTTLED) {
+        break;
+      }
+      // Retry if configured. User can optionally configure
+      // a transaction retry limit (default is 0) to enable retry.
+      if (++numOfRetries <= transactionRetryLimit) {
+        try {
+          int retryWaitTimeMs = Utils.getRetryAfterMs("", numOfRetries, transactionRetryInterval);
+          logger.info("Retrying readdue to throttle, retry count: {} SleepTime: {}",
+              numOfRetries, retryWaitTimeMs);
+          Thread.sleep(retryWaitTimeMs);
+        } catch(InterruptedException ex) {
+          logger.error("InterruptedException", ex);
+        }    
+      } else {
+        logger.error("Error read, not retrying any more. number of attempts: {} Retry Limit: {}",
+            numOfRetries, transactionRetryLimit);
+        break;
+      }
+    } while (true);
 
     if (dataintegrity) {
       verifyRow(keyname, cells);
     }
   }
+
 
   public void doTransactionReadModifyWrite(DB db) {
     // choose a random key
@@ -757,7 +809,6 @@ public class CoreWorkload extends Workload {
     if (!readallfields) {
       // read a random field
       String fieldname = fieldnames.get(fieldchooser.nextValue().intValue());
-
       fields = new HashSet<String>();
       fields.add(fieldname);
     }
@@ -773,15 +824,40 @@ public class CoreWorkload extends Workload {
     }
 
     // do the transaction
-
     HashMap<String, ByteIterator> cells = new HashMap<String, ByteIterator>();
 
+    long ist;
+    long st;
 
-    long ist = measurements.getIntendedStartTimeNs();
-    long st = System.nanoTime();
-    db.read(table, keyname, fields, cells);
-
-    db.update(table, keyname, values);
+    Status status;
+    int numOfRetries = 0;
+    do {
+      ist = measurements.getIntendedStartTimeNs();
+      st = System.nanoTime();
+      status = db.read(table, keyname, fields, cells);
+      if(null != status && status != Status.THROTTLED) {
+        status = db.update(table, keyname, values);
+      }
+      if (null != status && status != Status.THROTTLED) {
+        break;
+      }
+      // Retry if configured. User can optionally configure
+      // a transaction retry limit (default is 0) to enable retry.
+      if (++numOfRetries <= transactionRetryLimit) {
+        try {
+          int retryWaitTimeMs = Utils.getRetryAfterMs("", numOfRetries, transactionRetryInterval);
+          logger.info("Retrying read-modify-write due to throttle, retry count: {} SleepTime: {}",
+              numOfRetries, retryWaitTimeMs);
+          Thread.sleep(retryWaitTimeMs);
+        } catch(InterruptedException ex) {
+          logger.error("InterruptedException", ex);
+        }    
+      } else {
+        logger.error("Error read-modify-writing, not retrying any more. number of attempts: {} Retry Limit: {}",
+            numOfRetries, transactionRetryLimit);
+        break;
+      }
+    } while (true);
 
     long en = System.nanoTime();
 
@@ -793,6 +869,7 @@ public class CoreWorkload extends Workload {
     measurements.measureIntended("READ-MODIFY-WRITE", (int) ((en - ist) / 1000));
   }
 
+
   public void doTransactionScan(DB db) {
     // choose a random key
     long keynum = nextKeynum();
@@ -801,7 +878,6 @@ public class CoreWorkload extends Workload {
 
     // choose a random scan length
     int len = scanlength.nextValue().intValue();
-
     HashSet<String> fields = null;
 
     if (!readallfields) {
@@ -812,8 +888,32 @@ public class CoreWorkload extends Workload {
       fields.add(fieldname);
     }
 
-    db.scan(table, startkeyname, len, fields, new Vector<HashMap<String, ByteIterator>>());
+    Status status;
+    int numOfRetries = 0;
+    do {
+      status = db.scan(table, startkeyname, len, fields, new Vector<HashMap<String, ByteIterator>>());
+      if (null != status && status != Status.THROTTLED) {
+        break;
+      }
+      // Retry if configured. User can optionally configure
+      // a transaction retry limit (default is 0) to enable retry.
+      if (++numOfRetries <= transactionRetryLimit) {
+        try {
+          int retryWaitTimeMs = Utils.getRetryAfterMs("", numOfRetries, transactionRetryInterval);
+          logger.info("Retrying scan due to throttle, retry count: {} SleepTime: {}",
+              numOfRetries, retryWaitTimeMs);
+          Thread.sleep(retryWaitTimeMs);
+        } catch(InterruptedException ex) {
+          logger.error("InterruptedException", ex);
+        }    
+      } else {
+        logger.error("Error scanning, not retrying any more. number of attempts: {} Retry Limit: {}",
+            numOfRetries, transactionRetryLimit);
+        break;
+      }
+    } while (true);
   }
+
 
   public void doTransactionUpdate(DB db) {
     // choose a random key
@@ -830,23 +930,73 @@ public class CoreWorkload extends Workload {
       // update a random field
       values = buildSingleValue(keyname);
     }
-
-    db.update(table, keyname, values);
+    
+    Status status;
+    int numOfRetries = 0;
+    do {
+      status = db.update(table, keyname, values);
+      if (null != status && status != Status.THROTTLED) {
+        break;
+      }
+      // Retry if configured. User can optionally configure
+      // an transaction retry limit (default is 0) to enable retry.
+      if (++numOfRetries <= transactionRetryLimit) {
+        try {
+          int retryWaitTimeMs = Utils.getRetryAfterMs("", numOfRetries, transactionRetryInterval);
+          logger.info("Retrying update due to throttle, retry count: {} SleepTime: {}",
+              numOfRetries, retryWaitTimeMs);
+          Thread.sleep(retryWaitTimeMs);
+        } catch(InterruptedException ex) {
+          logger.error("InterruptedException", ex);
+        }    
+      } else {
+        logger.error("Error updating, not retrying any more. number of attempts: {} Retry Limit: {}",
+            numOfRetries, transactionRetryLimit);
+        break;
+      }
+    } while (true);
   }
+
 
   public void doTransactionInsert(DB db) {
     // choose the next key
     long keynum = transactioninsertkeysequence.nextValue();
-
     try {
       String dbkey = CoreWorkload.buildKeyName(keynum, zeropadding, orderedinserts);
 
       HashMap<String, ByteIterator> values = buildValues(dbkey);
-      db.insert(table, dbkey, values);
+      Status status;
+      int numOfRetries = 0;
+      do {
+        status = db.insert(table, dbkey, values);
+        if (null != status && status != Status.THROTTLED) {
+          break;
+        }
+      // Retry if configured. User can optionally configure
+      // an transaction retry limit (default is 0) to enable retry.
+        if (++numOfRetries <= transactionRetryLimit) {
+          try {
+            int retryWaitTimeMs = Utils.getRetryAfterMs("", numOfRetries, transactionRetryInterval);
+            logger.info("Retrying insert due to throttle, retry count: {} SleepTime: {}",
+                numOfRetries, retryWaitTimeMs);
+            Thread.sleep(retryWaitTimeMs);
+          } catch(InterruptedException ex) {
+            // System.err.println("InterruptedException" + ex.toString());
+            logger.error("InterruptedException", ex);
+          }
+        } else {
+          // System.err.println("Error inserting, not retrying any more. number of attempts: " + numOfRetries +
+          //     "Retry Limit: " + transactionRetryLimit);
+          logger.error("Error inserting, not retrying any more. number of attempts: {} Retry Limit: {}",
+              numOfRetries, transactionRetryLimit);
+          break;
+        }
+      } while (true);
     } finally {
       transactioninsertkeysequence.acknowledge(keynum);
     }
   }
+
 
   /**
    * Creates a weighted discrete values with database operations for a workload to perform.

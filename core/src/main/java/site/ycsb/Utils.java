@@ -229,4 +229,52 @@ public final class Utils {
     }
     return array;
   }
+
+  public static String[] getKeyValuesList(String exceptionString) {
+    String startingString = "Request rate is large:";
+    int startStringIndex = exceptionString.indexOf(startingString);
+    if (startStringIndex < 0) { 
+      return null; 
+    }
+    String requestRateString = exceptionString.substring(startStringIndex  + startingString.length());
+    String[] exceptions = requestRateString.trim().split("\\s*,\\s*");
+    return exceptions;
+  }
+
+  public static String getKeysValue(String[] pairs, String key) {
+    if (pairs == null) {
+      return null;
+    }
+    for(int i=0; i < pairs.length; i++) {
+//      System.out.printf("pairs[%d]: %s\n", i, pairs[i]);
+      String[] keyValue = pairs[i].toString().split("=");
+      if(keyValue.length == 2) {
+        if(keyValue[0].contentEquals(key)) {
+//          System.out.printf("\nKey %s Value %s\n", keyValue[0], keyValue[1]);
+          return keyValue[1].trim();
+        } 
+      }
+    }
+    return null;
+  }
+
+  public static int getRetryAfterMs(String exceptionString, int retry){
+    return getRetryAfterMs(exceptionString, retry, 100);
+  }
+
+  public static int getRetryAfterMs(String exceptionString, int retry, int minMs){
+    String[] exceptions = getKeyValuesList(exceptionString);
+    String retryAfterMs = getKeysValue(exceptions, "RetryAfterMs");
+    if(retryAfterMs != null) {
+      return Integer.parseInt(retryAfterMs);
+    }
+    return (int) Math.pow(2, retry) * minMs;
+  }
+
+  public static String getActivityId(String exceptionString) {
+    //parse the exception test to get retry milliseconds
+    String[] exceptions = getKeyValuesList(exceptionString);
+    String activityId = getKeysValue(exceptions, "ActivityID");
+    return activityId;
+  }
 }

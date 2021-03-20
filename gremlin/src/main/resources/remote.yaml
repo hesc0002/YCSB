@@ -1,0 +1,7 @@
+hosts: [localhost.gremlin]
+port: 8901
+username: /dbs/db1/colls/col1
+password: $password$
+connectionPool: {
+  enableSsl: false}
+serializer: { className: org.apache.tinkerpop.gremlin.driver.ser.GraphSONMessageSerializerV2d0, config: { serializeResultToString: true }}
