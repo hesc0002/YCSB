@@ -151,11 +151,6 @@ LICENSE file.
     </dependency>
     <dependency>
       <groupId>site.ycsb</groupId>
-      <artifactId>hypertable-binding</artifactId>
-      <version>${project.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>site.ycsb</groupId>
       <artifactId>ignite-binding</artifactId>
       <version>${project.version}</version>
     </dependency>
@@ -241,12 +236,12 @@ LICENSE file.
     </dependency>
     <dependency>
       <groupId>site.ycsb</groupId>
-      <artifactId>solr-binding</artifactId>
+      <artifactId>seaweedfs-binding</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>site.ycsb</groupId>
-      <artifactId>solr6-binding</artifactId>
+      <artifactId>scylla-binding</artifactId>
       <version>${project.version}</version>
     </dependency>
     <dependency>
@@ -264,18 +259,16 @@ LICENSE file.
         <artifactId>tablestore-binding</artifactId>
         <version>${project.version}</version>
     </dependency>
-<!--
-    <dependency>
-      <groupId>site.ycsb</groupId>
-      <artifactId>voldemort-binding</artifactId>
-      <version>${project.version}</version>
-    </dependency>
--->
     <dependency>
        <groupId>site.ycsb</groupId>
        <artifactId>voltdb-binding</artifactId>
        <version>${project.version}</version>
      </dependency>
+    <dependency>
+      <groupId>site.ycsb</groupId>
+      <artifactId>zookeeper-binding</artifactId>
+      <version>${project.version}</version>
+    </dependency>
 
   </dependencies>
   <build>

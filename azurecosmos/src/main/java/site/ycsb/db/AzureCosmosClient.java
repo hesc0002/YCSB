@@ -12,9 +12,6 @@
  * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
  * License for the specific language governing permissions and limitations under
  * the License. See accompanying LICENSE file.
- * 
- * Authors: Anthony F. Voellm and Khoa Dang (2.2.3)
- *          Armaan Sood (4.6.0)
  */
 
 package site.ycsb.db;
@@ -70,7 +67,7 @@ public class AzureCosmosClient extends DB {
   protected static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
   // Default configuration values
-  private static final ConsistencyLevel DEFAULT_CONSISTENCY_LEVEL = ConsistencyLevel.EVENTUAL;
+  private static final ConsistencyLevel DEFAULT_CONSISTENCY_LEVEL = ConsistencyLevel.SESSION;
   private static final String DEFAULT_DATABASE_NAME = "ycsb";
   private static final boolean DEFAULT_USE_GATEWAY = false;
   private static final boolean DEFAULT_USE_UPSERT = false;
@@ -79,7 +76,7 @@ public class AzureCosmosClient extends DB {
   private static final int DEFAULT_PREFERRED_PAGE_SIZE = -1;
   public static final int NUM_UPDATE_ATTEMPTS = 4;
   private static final boolean DEFAULT_INCLUDE_EXCEPTION_STACK_IN_LOG = false;
-  private static final String DEFAULT_USER_AGENT = "ycsb-4.6.0";
+  private static final String DEFAULT_USER_AGENT = "azurecosmos-ycsb";
 
   private static final Logger LOGGER = LoggerFactory.getLogger(AzureCosmosClient.class);
 
@@ -259,7 +256,7 @@ public class AzureCosmosClient extends DB {
   @Override
   public void cleanup() throws DBException {
     synchronized (INIT_COUNT) {
-      if (INIT_COUNT.decrementAndGet() <= 0) {
+      if (INIT_COUNT.decrementAndGet() <= 0 && AzureCosmosClient.client != null) {
         try {
           AzureCosmosClient.client.close();
         } catch (Exception e) {
@@ -268,7 +265,7 @@ public class AzureCosmosClient extends DB {
           }
           LOGGER.error("Could not close DocumentClient", e);
         } finally {
-          client = null;
+          AzureCosmosClient.client = null;
         }
       }
     }
@@ -312,14 +309,13 @@ public class AzureCosmosClient extends DB {
           }
         }
         StringByteIterator.putAllAsByteIterators(result, stringResults);
-        return Status.OK;
       }
-
+      return Status.OK;
     } catch (CosmosException e) {
       LOGGER.error("Failed to read key {} in collection {} in database {}", key, table, AzureCosmosClient.databaseName,
           e);
+      return Status.NOT_FOUND;
     }
-    return Status.OK;
   }
 
   /**
@@ -397,8 +393,12 @@ public class AzureCosmosClient extends DB {
 
     String readEtag = "";
 
+    // Azure Cosmos DB does not have patch support. Until then, we need to read
+    // the document, update it, and then write it back.
+    // This could be made more efficient by using a stored procedure
+    // and doing the read/modify write on the server side. Perhaps
+    // that will be a future improvement.
     for (int attempt = 0; attempt < NUM_UPDATE_ATTEMPTS; attempt++) {
-
       try {
         CosmosContainer container = AzureCosmosClient.containerCache.get(table);
         if (container == null) {
@@ -426,12 +426,6 @@ public class AzureCosmosClient extends DB {
         }
         LOGGER.error("Failed to update key {} to collection {} in database {} on attempt {}", key, table,
             AzureCosmosClient.databaseName, attempt, e);
-
-        // Azure Cosmos DB does not have patch support. Until then we need to read
-        // the document, update in place, and then write back.
-        // This could actually be made more efficient by using a stored procedure
-        // and doing the read/modify write on the server side. Perhaps
-        // that will be a future improvement.
       }
     }
 

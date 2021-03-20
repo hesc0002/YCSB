@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2010 Yahoo! Inc., 2016-2017 YCSB contributors. All rights reserved.
+ * Copyright (c) 2010 Yahoo! Inc., 2016-2020 YCSB contributors. All rights reserved.
  * <p>
  * Licensed under the Apache License, Version 2.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -18,11 +18,13 @@
 package site.ycsb;
 
 import java.util.Map;
+
 import site.ycsb.measurements.Measurements;
 import org.apache.htrace.core.TraceScope;
 import org.apache.htrace.core.Tracer;
 
 import java.util.*;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +45,8 @@ public class DBWrapper extends DB {
   private static final String REPORT_LATENCY_FOR_EACH_ERROR_PROPERTY_DEFAULT = "false";
 
   private static final String LATENCY_TRACKED_ERRORS_PROPERTY = "latencytrackederrors";
+
+  private static final AtomicBoolean LOG_REPORT_CONFIG = new AtomicBoolean(false);
 
   private final String scopeStringCleanup;
   private final String scopeStringDelete;
@@ -104,9 +108,11 @@ public class DBWrapper extends DB {
         }
       }
 
-      logger.info("DBWrapper: report latency for each error is {} and specific error codes "
-          + "to track for latency are: {}", this.reportLatencyForEachError, this.latencyTrackedErrors.toString());
-
+      if (LOG_REPORT_CONFIG.compareAndSet(false, true)) {
+        System.err.println("DBWrapper: report latency for each error is " +
+            this.reportLatencyForEachError + " and specific error codes to track" +
+            " for latency are: " + this.latencyTrackedErrors.toString());
+      }
     }
   }
 
@@ -116,7 +122,7 @@ public class DBWrapper extends DB {
    */
   public void cleanup() throws DBException {
     try (final TraceScope span = tracer.newScope(scopeStringCleanup)) {
-      long ist = measurements.getIntendedtartTimeNs();
+      long ist = measurements.getIntendedStartTimeNs();
       long st = System.nanoTime();
       db.cleanup();
       long en = System.nanoTime();
@@ -137,7 +143,7 @@ public class DBWrapper extends DB {
   public Status read(String table, String key, Set<String> fields,
                      Map<String, ByteIterator> result) {
     try (final TraceScope span = tracer.newScope(scopeStringRead)) {
-      long ist = measurements.getIntendedtartTimeNs();
+      long ist = measurements.getIntendedStartTimeNs();
       long st = System.nanoTime();
       Status res = db.read(table, key, fields, result);
       long en = System.nanoTime();
@@ -161,7 +167,7 @@ public class DBWrapper extends DB {
   public Status scan(String table, String startkey, int recordcount,
                      Set<String> fields, Vector<HashMap<String, ByteIterator>> result) {
     try (final TraceScope span = tracer.newScope(scopeStringScan)) {
-      long ist = measurements.getIntendedtartTimeNs();
+      long ist = measurements.getIntendedStartTimeNs();
       long st = System.nanoTime();
       Status res = db.scan(table, startkey, recordcount, fields, result);
       long en = System.nanoTime();
@@ -200,7 +206,7 @@ public class DBWrapper extends DB {
   public Status update(String table, String key,
                        Map<String, ByteIterator> values) {
     try (final TraceScope span = tracer.newScope(scopeStringUpdate)) {
-      long ist = measurements.getIntendedtartTimeNs();
+      long ist = measurements.getIntendedStartTimeNs();
       long st = System.nanoTime();
       Status res = db.update(table, key, values);
       long en = System.nanoTime();
@@ -223,7 +229,7 @@ public class DBWrapper extends DB {
   public Status insert(String table, String key,
                        Map<String, ByteIterator> values) {
     try (final TraceScope span = tracer.newScope(scopeStringInsert)) {
-      long ist = measurements.getIntendedtartTimeNs();
+      long ist = measurements.getIntendedStartTimeNs();
       long st = System.nanoTime();
       Status res = db.insert(table, key, values);
       long en = System.nanoTime();
@@ -242,7 +248,7 @@ public class DBWrapper extends DB {
    */
   public Status delete(String table, String key) {
     try (final TraceScope span = tracer.newScope(scopeStringDelete)) {
-      long ist = measurements.getIntendedtartTimeNs();
+      long ist = measurements.getIntendedStartTimeNs();
       long st = System.nanoTime();
       Status res = db.delete(table, key);
       long en = System.nanoTime();

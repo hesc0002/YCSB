@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2010 Yahoo! Inc., Copyright (c) 2016-2017 YCSB contributors. All rights reserved.
+ * Copyright (c) 2010 Yahoo! Inc., Copyright (c) 2016-2020 YCSB contributors. All rights reserved.
  * <p>
  * Licensed under the Apache License, Version 2.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -158,6 +158,21 @@ public class CoreWorkload extends Workload {
   public static final String READ_ALL_FIELDS_PROPERTY_DEFAULT = "true";
 
   protected boolean readallfields;
+
+  /**
+   * The name of the property for determining how to read all the fields when readallfields is true.
+   * If set to true, all the field names will be passed into the underlying client. If set to false,
+   * null will be passed into the underlying client. When passed a null, some clients may retrieve
+   * the entire row with a wildcard, which may be slower than naming all the fields.
+   */
+  public static final String READ_ALL_FIELDS_BY_NAME_PROPERTY = "readallfieldsbyname";
+
+  /**
+   * The default value for the readallfieldsbyname property.
+   */
+  public static final String READ_ALL_FIELDS_BY_NAME_PROPERTY_DEFAULT = "false";
+
+  protected boolean readallfieldsbyname;
 
   /**
    * The name of the property for deciding whether to write one field (false) or all fields (true)
@@ -379,6 +394,19 @@ public class CoreWorkload extends Workload {
 
   private Measurements measurements = Measurements.getMeasurements();
 
+  public static String buildKeyName(long keynum, int zeropadding, boolean orderedinserts) {
+    if (!orderedinserts) {
+      keynum = Utils.hash(keynum);
+    }
+    String value = Long.toString(keynum);
+    int fill = zeropadding - value.length();
+    String prekey = "user";
+    for (int i = 0; i < fill; i++) {
+      prekey += '0';
+    }
+    return prekey + value;
+  }
+
   protected static NumberGenerator getFieldLengthGenerator(Properties p) throws WorkloadException {
     NumberGenerator fieldlengthgenerator;
     String fieldlengthdistribution = p.getProperty(
@@ -457,6 +485,8 @@ public class CoreWorkload extends Workload {
 
     readallfields = Boolean.parseBoolean(
         p.getProperty(READ_ALL_FIELDS_PROPERTY, READ_ALL_FIELDS_PROPERTY_DEFAULT));
+    readallfieldsbyname = Boolean.parseBoolean(
+        p.getProperty(READ_ALL_FIELDS_BY_NAME_PROPERTY, READ_ALL_FIELDS_BY_NAME_PROPERTY_DEFAULT));
     writeallfields = Boolean.parseBoolean(
         p.getProperty(WRITE_ALL_FIELDS_PROPERTY, WRITE_ALL_FIELDS_PROPERTY_DEFAULT));
 
@@ -469,6 +499,9 @@ public class CoreWorkload extends Workload {
         FIELD_LENGTH_DISTRIBUTION_PROPERTY_DEFAULT)).equals("constant")) {
       System.err.println("Must have constant field size to check data integrity.");
       System.exit(-1);
+    }
+    if (dataintegrity) {
+      System.out.println("Data integrity is enabled.");
     }
 
     if (p.getProperty(INSERT_ORDER_PROPERTY, INSERT_ORDER_PROPERTY_DEFAULT).compareTo("hashed") == 0) {
@@ -543,19 +576,6 @@ public class CoreWorkload extends Workload {
         TRANSACTION_RETRY_INTERVAL, TRANSACTION_RETRY_INTERVAL_DEFAULT));
   }
 
-  protected String buildKeyName(long keynum) {
-    if (!orderedinserts) {
-      keynum = Utils.hash(keynum);
-    }
-    String value = Long.toString(keynum);
-    int fill = zeropadding - value.length();
-    String prekey = "user";
-    for (int i = 0; i < fill; i++) {
-      prekey += '0';
-    }
-    return prekey + value;
-  }
-
   /**
    * Builds a value for a randomly chosen field.
    */
@@ -621,7 +641,7 @@ public class CoreWorkload extends Workload {
   @Override
   public boolean doInsert(DB db, Object threadstate) {
     int keynum = keysequence.nextValue().intValue();
-    String dbkey = buildKeyName(keynum);
+    String dbkey = CoreWorkload.buildKeyName(keynum, zeropadding, orderedinserts);
     HashMap<String, ByteIterator> values = buildValues(dbkey);
 
     Status status;
@@ -729,7 +749,9 @@ public class CoreWorkload extends Workload {
   public void doTransactionRead(DB db) {
     // choose a random key
     long keynum = nextKeynum();
-    String keyname = buildKeyName(keynum);
+
+    String keyname = CoreWorkload.buildKeyName(keynum, zeropadding, orderedinserts);
+
     HashSet<String> fields = null;
 
     if (!readallfields) {
@@ -737,7 +759,7 @@ public class CoreWorkload extends Workload {
       String fieldname = fieldnames.get(fieldchooser.nextValue().intValue());
       fields = new HashSet<String>();
       fields.add(fieldname);
-    } else if (dataintegrity) {
+    } else if (dataintegrity || readallfieldsbyname) {
       // pass the full field list if dataintegrity is on for verification
       fields = new HashSet<String>(fieldnames);
     }
@@ -779,7 +801,9 @@ public class CoreWorkload extends Workload {
   public void doTransactionReadModifyWrite(DB db) {
     // choose a random key
     long keynum = nextKeynum();
-    String keyname = buildKeyName(keynum);
+
+    String keyname = CoreWorkload.buildKeyName(keynum, zeropadding, orderedinserts);
+
     HashSet<String> fields = null;
 
     if (!readallfields) {
@@ -808,7 +832,7 @@ public class CoreWorkload extends Workload {
     Status status;
     int numOfRetries = 0;
     do {
-      ist = measurements.getIntendedtartTimeNs();
+      ist = measurements.getIntendedStartTimeNs();
       st = System.nanoTime();
       status = db.read(table, keyname, fields, cells);
       if(null != status && status != Status.THROTTLED) {
@@ -849,7 +873,8 @@ public class CoreWorkload extends Workload {
   public void doTransactionScan(DB db) {
     // choose a random key
     long keynum = nextKeynum();
-    String startkeyname = buildKeyName(keynum);
+
+    String startkeyname = CoreWorkload.buildKeyName(keynum, zeropadding, orderedinserts);
 
     // choose a random scan length
     int len = scanlength.nextValue().intValue();
@@ -893,7 +918,9 @@ public class CoreWorkload extends Workload {
   public void doTransactionUpdate(DB db) {
     // choose a random key
     long keynum = nextKeynum();
-    String keyname = buildKeyName(keynum);
+
+    String keyname = CoreWorkload.buildKeyName(keynum, zeropadding, orderedinserts);
+
     HashMap<String, ByteIterator> values;
 
     if (writeallfields) {
@@ -935,7 +962,7 @@ public class CoreWorkload extends Workload {
     // choose the next key
     long keynum = transactioninsertkeysequence.nextValue();
     try {
-      String dbkey = buildKeyName(keynum);
+      String dbkey = CoreWorkload.buildKeyName(keynum, zeropadding, orderedinserts);
 
       HashMap<String, ByteIterator> values = buildValues(dbkey);
       Status status;
